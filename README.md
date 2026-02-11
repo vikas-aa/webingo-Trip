@@ -1,40 +1,39 @@
-# ✈️ Trip Planner - Flight Booking UI (Flutter)
+# Trip Booking UI (Flutter)
 
-A pixel-perfect Flutter UI project based on a modern flight booking app design.  
-This project includes **3 main screens**:
-
-- **Trip Home Screen** (Plan your trip)
-- **Flight Result Screen** (Flight listing + filters)
-- **Flight Details Screen** (Ticket details + passengers + barcode)
+A Flutter UI assignment project that replicates the provided design screens with pixel-perfect layout, clean component structure, and smooth navigation flow.
 
 ---
 
-## 📸 Screens Included
+## 📌 Features
 
-### 1) Trip Home Screen
-- Gradient background
-- Search flight card (From, To, Departure date, People)
-- Saved trips horizontal tickets
-- Bottom navigation
-
-### 2) Flight Result Screen
-- Filter chips (Lowest to Highest, Preferred airlines, Flight)
-- Flight cards listing
-- Floating filter button
-- Select flight → navigates to details screen
-
-### 3) Flight Details Screen
-- Flight ticket summary
-- Terminal, Gate, Class info
-- Passengers list
-- Barcode design
-- Bottom CTA: Download & Save Pass
+Perfect UI based on the given reference screens
+- Clean and reusable widget structure
+- Smooth navigation flow:
+  - Trip Home Screen → Flight Results Screen → Flight Details Screen
+- Dotted divider UI (custom widget)
+- Ticket-style card with custom clipper
+- Bottom navigation in separate file
+- Responsive layout (works well on multiple screen sizes)
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠 Tech Stack
 
-- **Flutter (Material UI)**
-- **Dart**
-- Clean reusable UI components
-- Feature-based folder structure
+- Flutter (Material UI)
+- Dart
+
+---
+
+## 📦 Dependencies Used
+
+This project uses only Flutter's default SDK libraries.
+
+**No third-party packages** were required.
+
+---
+
+## ▶️ Steps to Run the Project
+
+### 1) Clone the Repository
+```bash
+git clone https://github.com/vikas-aa/webingo-Trip.git
