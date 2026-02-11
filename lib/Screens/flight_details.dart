@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/Model/flight_model.dart';
 
+import 'package:flutter_application_1/data/models/flight_model.dart';
+import 'package:provider/provider.dart';
+import '../providers/flight_details_provider.dart';
 
-class FlightDetailsScreen extends StatelessWidget {
+class FlightDetailsScreen extends StatefulWidget {
   final FlightModel flight;
 
   const FlightDetailsScreen({
@@ -11,7 +13,26 @@ class FlightDetailsScreen extends StatelessWidget {
   });
 
   @override
+  State<FlightDetailsScreen> createState() => _FlightDetailsScreenState();
+}
+
+class _FlightDetailsScreenState extends State<FlightDetailsScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<FlightDetailsProvider>().loadDetails(widget.flight);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final provider = context.watch<FlightDetailsProvider>();
+
+    // Fallback logic
+    final flight = provider.flightDetails ?? widget.flight;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
       body: SafeArea(
@@ -43,6 +64,31 @@ class FlightDetailsScreen extends StatelessWidget {
                   children: [
                     _TopBar(onBack: () => Navigator.pop(context)),
                     const SizedBox(height: 14),
+
+                    // Loading indicator (no UI change, only extra)
+                    if (provider.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 14),
+                        child: SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+
+                    // Error text (minimal)
+                    if (provider.error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          provider.error!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.red.withOpacity(0.75),
+                          ),
+                        ),
+                      ),
 
                     _FlightDetailsCard(flight: flight),
                     const SizedBox(height: 14),
@@ -113,7 +159,6 @@ class _TopBar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Title centered perfectly
           const Text(
             "Your flight details",
             style: TextStyle(
@@ -123,8 +168,6 @@ class _TopBar extends StatelessWidget {
               letterSpacing: -0.2,
             ),
           ),
-
-          // Back button left
           Align(
             alignment: Alignment.centerLeft,
             child: _CircleButton(
@@ -207,7 +250,6 @@ class _FlightDetailsCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Header row
           Row(
             children: [
               Container(
@@ -254,7 +296,6 @@ class _FlightDetailsCard extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Route row
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -265,8 +306,6 @@ class _FlightDetailsCard extends StatelessWidget {
                 alignEnd: false,
               ),
               const Spacer(),
-
-              // Center plane circle
               Column(
                 children: [
                   Container(
@@ -305,7 +344,6 @@ class _FlightDetailsCard extends StatelessWidget {
                   ),
                 ],
               ),
-
               const Spacer(),
               _AirportSide(
                 time: flight.arriveTime,
@@ -317,12 +355,9 @@ class _FlightDetailsCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 12),
-
           _DottedDivider(color: Colors.black.withOpacity(0.10)),
-
           const SizedBox(height: 12),
 
-          // Terminal / Gate / Class row
           Row(
             children: [
               _MiniInfo(title: "TERMINAL", value: flight.terminal),
@@ -428,7 +463,7 @@ class _MiniInfo extends StatelessWidget {
 }
 
 // ============================================================================
-// PASSENGERS CARD
+// PASSENGERS CARD (STATIC because API doesn't provide it)
 // ============================================================================
 class _PassengersCard extends StatelessWidget {
   const _PassengersCard();
@@ -485,14 +520,12 @@ class _PassengersCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Barcode
           const _Barcode(),
         ],
       ),
     );
   }
 }
-
 class _PassengerRow extends StatelessWidget {
   final String avatarUrl;
   final String passengerLabel;
@@ -510,17 +543,28 @@ class _PassengerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
+        SizedBox(
           width: 44,
           height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            image: DecorationImage(
+          child: ClipOval(
+            child: Image.network(
+              avatarUrl,
               fit: BoxFit.cover,
-              image: NetworkImage(avatarUrl),
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: Colors.black.withOpacity(0.06),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.person,
+                    size: 22,
+                    color: Colors.black.withOpacity(0.45),
+                  ),
+                );
+              },
             ),
           ),
         ),
+
         const SizedBox(width: 12),
 
         Expanded(
@@ -580,7 +624,7 @@ class _PassengerRow extends StatelessWidget {
 }
 
 // ============================================================================
-// BARCODE (looks like screenshot)
+// BARCODE (same)
 // ============================================================================
 class _Barcode extends StatelessWidget {
   const _Barcode();
@@ -608,7 +652,6 @@ class _BarcodePainter extends CustomPainter {
     double x = 0;
     final h = size.height;
 
-    // Better barcode pattern
     final bars = <double>[
       2, 1, 3, 1, 1, 4, 2, 1, 5, 1, 2, 1, 3, 1, 1, 6, 2, 1, 3, 1, 1,
       4, 2, 1, 5, 1, 2, 1, 3, 1, 1, 6, 2, 1, 3, 1, 1, 4, 2, 1, 5, 1,
@@ -631,7 +674,6 @@ class _BarcodePainter extends CustomPainter {
       }
 
       x += barW;
-
       if (x > size.width) break;
     }
   }

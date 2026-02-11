@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/Screens/bottom_nav.dart';
 import 'package:flutter_application_1/Screens/flight_result.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/airport_provider.dart';
 
 class TripHomeScreen extends StatefulWidget {
   const TripHomeScreen({super.key});
@@ -11,12 +13,36 @@ class TripHomeScreen extends StatefulWidget {
 }
 
 class _TripHomeScreenState extends State<TripHomeScreen> {
-  String fromCity = "Jakarta (CGK)";
-  String toCity = "Tokyo (NRT)";
-  DateTime selectedDate = DateTime(2025, 4, 2);
-  int people = 3;
+  String? fromCode;
+  String? toCode;
+
+  DateTime selectedDate = DateTime.now().add(const Duration(days: 2));
+  int people = 1;
 
   int bottomIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final p = context.read<AirportProvider>();
+
+      await p.loadDepartureAirports();
+      await p.loadArrivalAirports();
+
+      // Auto select first values (so dropdown never crashes)
+      if (mounted) {
+        if (p.departureAirports.isNotEmpty) {
+          fromCode = (p.departureAirports.first["airport_code"] ?? "").toString();
+        }
+        if (p.arrivalAirports.isNotEmpty) {
+          toCode = (p.arrivalAirports.first["airport_code"] ?? "").toString();
+        }
+        setState(() {});
+      }
+    });
+  }
 
   String _formatDate(DateTime d) {
     const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -37,6 +63,13 @@ class _TripHomeScreenState extends State<TripHomeScreen> {
     final day = days[d.weekday - 1];
     final month = months[d.month - 1];
     return "$day, ${d.day} $month";
+  }
+
+  String _formatApiDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, "0");
+    final m = d.month.toString().padLeft(2, "0");
+    final day = d.day.toString().padLeft(2, "0");
+    return "$y-$m-$day";
   }
 
   Future<void> _pickDate() async {
@@ -67,38 +100,43 @@ class _TripHomeScreenState extends State<TripHomeScreen> {
 
   void _swapFromTo() {
     setState(() {
-      final t = fromCity;
-      fromCity = toCity;
-      toCity = t;
+      final t = fromCode;
+      fromCode = toCode;
+      toCode = t;
     });
   }
 
   void _searchFlights() {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => FlightResultScreen(
-        fromCity: fromCity,
-        toCity: toCity,
-        date: selectedDate,
-        people: people,
-      ),
-    ),
-  );
-}
+    if (fromCode == null || toCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select From & To airport")),
+      );
+      return;
+    }
 
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FlightResultScreen(
+          fromCity: fromCode!, // IMPORTANT: code only
+          toCity: toCode!, // IMPORTANT: code only
+          date: DateTime.parse(_formatApiDate(selectedDate)),
+          people: people,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final airportProvider = context.watch<AirportProvider>();
+
     return Scaffold(
       backgroundColor: Colors.white,
-
-      // ✅ Bottom Nav (ALAG FILE)
       bottomNavigationBar: TripBottomNav(
         currentIndex: bottomIndex,
         onTap: (i) => setState(() => bottomIndex = i),
       ),
-
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -113,7 +151,6 @@ class _TripHomeScreenState extends State<TripHomeScreen> {
                   children: [
                     const SizedBox(height: 6),
 
-                    // Title + Avatar
                     Row(
                       children: const [
                         Expanded(
@@ -137,13 +174,37 @@ class _TripHomeScreenState extends State<TripHomeScreen> {
 
                     const SizedBox(height: 22),
 
+                    if (airportProvider.isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 12),
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+
+                    if (airportProvider.error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          airportProvider.error!,
+                          style: TextStyle(
+                            color: Colors.red.withOpacity(0.85),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+
                     _SearchCard(
-                      fromCity: fromCity,
-                      toCity: toCity,
+                      fromCode: fromCode,
+                      toCode: toCode,
+                      fromList: airportProvider.departureAirports,
+                      toList: airportProvider.arrivalAirports,
                       dateText: _formatDate(selectedDate),
                       people: people,
                       onSwap: _swapFromTo,
                       onPickDate: _pickDate,
+                      onFromChanged: (v) => setState(() => fromCode = v),
+                      onToChanged: (v) => setState(() => toCode = v),
                       onPeopleChanged: (v) => setState(() => people = v),
                       onSearch: _searchFlights,
                     ),
@@ -182,7 +243,7 @@ class _TripHomeScreenState extends State<TripHomeScreen> {
                         physics: const BouncingScrollPhysics(),
                         itemCount: 3,
                         separatorBuilder: (_, __) => const SizedBox(width: 16),
-                        itemBuilder: (_, __) => const _TicketSavedTrip(),
+                        itemBuilder: (_, i) => _TicketSavedTrip(index: i),
                       ),
                     ),
                   ],
@@ -268,29 +329,66 @@ class _Avatar extends StatelessWidget {
 // SEARCH CARD
 // ============================================================================
 class _SearchCard extends StatelessWidget {
-  final String fromCity;
-  final String toCity;
+  final String? fromCode;
+  final String? toCode;
+
+  final List<Map<String, dynamic>> fromList;
+  final List<Map<String, dynamic>> toList;
+
   final String dateText;
   final int people;
 
   final VoidCallback onSwap;
   final VoidCallback onPickDate;
+
+  final ValueChanged<String?> onFromChanged;
+  final ValueChanged<String?> onToChanged;
+
   final ValueChanged<int> onPeopleChanged;
   final VoidCallback onSearch;
 
   const _SearchCard({
-    required this.fromCity,
-    required this.toCity,
+    required this.fromCode,
+    required this.toCode,
+    required this.fromList,
+    required this.toList,
     required this.dateText,
     required this.people,
     required this.onSwap,
     required this.onPickDate,
+    required this.onFromChanged,
+    required this.onToChanged,
     required this.onPeopleChanged,
     required this.onSearch,
   });
 
+  String _label(Map<String, dynamic> a) {
+    final city = (a["city"] ?? "").toString();
+    final code = (a["airport_code"] ?? "").toString();
+    return "$city ($code)";
+  }
+
+  List<Map<String, dynamic>> _uniqueByCode(List<Map<String, dynamic>> list) {
+    final map = <String, Map<String, dynamic>>{};
+    for (final e in list) {
+      final code = (e["airport_code"] ?? "").toString();
+      if (code.isEmpty) continue;
+      map[code] = e;
+    }
+    return map.values.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final safeFromList = _uniqueByCode(fromList);
+    final safeToList = _uniqueByCode(toList);
+
+    final fromCodes = safeFromList.map((e) => (e["airport_code"] ?? "").toString()).toList();
+    final toCodes = safeToList.map((e) => (e["airport_code"] ?? "").toString()).toList();
+
+    final safeFromValue = fromCodes.contains(fromCode) ? fromCode : null;
+    final safeToValue = toCodes.contains(toCode) ? toCode : null;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
@@ -306,16 +404,46 @@ class _SearchCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const _Label("From"),
-                  const SizedBox(height: 4),
-                  _Value(fromCity),
+                  const SizedBox(height: 6),
+
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: safeFromValue,
+                      isExpanded: true,
+                      hint: const Text("Select departure"),
+                      items: safeFromList.map((a) {
+                        final code = (a["airport_code"] ?? "").toString();
+                        return DropdownMenuItem(
+                          value: code,
+                          child: Text(_label(a)),
+                        );
+                      }).toList(),
+                      onChanged: safeFromList.isEmpty ? null : onFromChanged,
+                    ),
+                  ),
 
                   const SizedBox(height: 12),
                   Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(0.06)),
                   const SizedBox(height: 12),
 
                   const _Label("To"),
-                  const SizedBox(height: 4),
-                  _Value(toCity),
+                  const SizedBox(height: 6),
+
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: safeToValue,
+                      isExpanded: true,
+                      hint: const Text("Select destination"),
+                      items: safeToList.map((a) {
+                        final code = (a["airport_code"] ?? "").toString();
+                        return DropdownMenuItem(
+                          value: code,
+                          child: Text(_label(a)),
+                        );
+                      }).toList(),
+                      onChanged: safeToList.isEmpty ? null : onToChanged,
+                    ),
+                  ),
 
                   const SizedBox(height: 14),
                   Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(0.06)),
@@ -413,24 +541,6 @@ class _Label extends StatelessWidget {
         fontSize: 12,
         fontWeight: FontWeight.w700,
         color: _C.muted,
-      ),
-    );
-  }
-}
-
-class _Value extends StatelessWidget {
-  final String text;
-  const _Value(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w900,
-        color: _C.text,
-        letterSpacing: -0.25,
       ),
     );
   }
@@ -536,185 +646,146 @@ class _PeopleDropdown extends StatelessWidget {
     );
   }
 }
-
-// ============================================================================
-// TICKET
-// ============================================================================
 class _TicketSavedTrip extends StatelessWidget {
-  const _TicketSavedTrip();
+  final int index;
+  const _TicketSavedTrip({required this.index});
 
   @override
   Widget build(BuildContext context) {
-    return ClipPath(
-      clipper: _TicketNotchClipper(),
-      child: Container(
-        width: 310,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 22,
-              offset: const Offset(0, 14),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            const Text(
-              "Citilink",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0D8B57),
-                fontStyle: FontStyle.italic,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 10),
+    final airlines = ["Citilink", "IndiGo", "Air India"];
+    final from = ["CGK", "DEL", "BOM"];
+    final to = ["NRT", "BBI", "VTZ"];
+    final times = [
+      ["07:47", "14:30"],
+      ["09:10", "12:55"],
+      ["18:30", "22:20"],
+    ];
 
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _AirportSide(
-                  time: "07:47",
-                  code: "CGK",
-                  city: "(Jakarta)",
-                  alignEnd: false,
-                ),
-                const Spacer(),
-                Column(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 16,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.flight_takeoff_rounded,
-                        size: 20,
-                        color: _C.blue.withOpacity(0.85),
-                      ),
+    final dates = ["Jan 20, 2025", "Feb 12, 2025", "Mar 05, 2025"];
+
+    final a = airlines[index % airlines.length];
+    final f = from[index % from.length];
+    final t = to[index % to.length];
+
+    final depart = times[index % times.length][0];
+    final arrive = times[index % times.length][1];
+    final date = dates[index % dates.length];
+
+    return Container(
+      width: 310,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            a,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0D8B57),
+              fontStyle: FontStyle.italic,
+              letterSpacing: -0.2,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _SavedAirportSide(time: depart, code: f, city: "(City)"),
+
+              Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 16,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "7h 15m",
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black.withOpacity(0.55),
-                      ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.flight_takeoff_rounded,
+                      size: 20,
+                      color: _C.blue.withOpacity(0.9),
                     ),
-                  ],
-                ),
-                const Spacer(),
-                _AirportSide(
-                  time: "14:30",
-                  code: "NRT",
-                  city: "(Tokyo)",
-                  alignEnd: true,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _DottedDivider(
-                color: Colors.black.withOpacity(0.18),
-                dashWidth: 5,
-                dashSpace: 5,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "7h 15m",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black.withOpacity(0.55),
+                    ),
+                  ),
+                ],
               ),
-            ),
 
-            const SizedBox(height: 12),
+              _SavedAirportSide(time: arrive, code: t, city: "(City)"),
+            ],
+          ),
 
-            Row(
-              children: const [
-                _DateBlock(alignEnd: false),
-                Spacer(),
-                _DateBlock(alignEnd: true),
-              ],
+          const SizedBox(height: 14),
+
+          // ✅ dashed line
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: _DottedDivider(
+              color: Colors.black.withOpacity(0.18),
+              dashWidth: 5,
+              dashSpace: 5,
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ✅ Date row
+          Row(
+            children: [
+              _SavedDateBlock(date: date, alignEnd: false),
+              const Spacer(),
+              _SavedDateBlock(date: date, alignEnd: true),
+            ],
+          ),
+        ],
       ),
     );
   }
-}
-
-class _AirportSide extends StatelessWidget {
-  final String time;
-  final String code;
-  final String city;
+}class _SavedDateBlock extends StatelessWidget {
+  final String date;
   final bool alignEnd;
 
-  const _AirportSide({
-    required this.time,
-    required this.code,
-    required this.city,
+  const _SavedDateBlock({
+    required this.date,
     required this.alignEnd,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        Text(
-          time,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: _C.blue,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          code,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: _C.text,
-            letterSpacing: -0.3,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          city,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: Colors.black.withOpacity(0.45),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DateBlock extends StatelessWidget {
-  final bool alignEnd;
-  const _DateBlock({required this.alignEnd});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: const [
-        Text(
+        const Text(
           "DATE",
           style: TextStyle(
             fontSize: 10,
@@ -723,10 +794,10 @@ class _DateBlock extends StatelessWidget {
             letterSpacing: 0.8,
           ),
         ),
-        SizedBox(height: 6),
+        const SizedBox(height: 6),
         Text(
-          "Jan 20, 2025",
-          style: TextStyle(
+          date,
+          style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w900,
             color: _C.text,
@@ -761,7 +832,9 @@ class _DottedDivider extends StatelessWidget {
             return SizedBox(
               width: dashWidth,
               height: 1.2,
-              child: DecoratedBox(decoration: BoxDecoration(color: color)),
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: color),
+              ),
             );
           }),
         );
@@ -770,44 +843,49 @@ class _DottedDivider extends StatelessWidget {
   }
 }
 
-class _TicketNotchClipper extends CustomClipper<Path> {
+class _SavedAirportSide extends StatelessWidget {
+  final String time;
+  final String code;
+  final String city;
+
+  const _SavedAirportSide({
+    required this.time,
+    required this.code,
+    required this.city,
+  });
+
   @override
-  Path getClip(Size size) {
-    const r = 16.0;
-    const notchRadius = 14.0;
-
-    final p = Path();
-
-    p.moveTo(r, 0);
-    p.quadraticBezierTo(0, 0, 0, r);
-
-    p.lineTo(0, size.height * 0.50 - notchRadius);
-    p.arcToPoint(
-      Offset(0, size.height * 0.50 + notchRadius),
-      radius: const Radius.circular(notchRadius),
-      clockwise: false,
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          time,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: _C.blue,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          code,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: _C.text,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          city,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.black.withOpacity(0.45),
+          ),
+        ),
+      ],
     );
-
-    p.lineTo(0, size.height - r);
-    p.quadraticBezierTo(0, size.height, r, size.height);
-
-    p.lineTo(size.width - r, size.height);
-    p.quadraticBezierTo(size.width, size.height, size.width, size.height - r);
-
-    p.lineTo(size.width, size.height * 0.50 + notchRadius);
-    p.arcToPoint(
-      Offset(size.width, size.height * 0.50 - notchRadius),
-      radius: const Radius.circular(notchRadius),
-      clockwise: false,
-    );
-
-    p.lineTo(size.width, r);
-    p.quadraticBezierTo(size.width, 0, size.width - r, 0);
-
-    p.close();
-    return p;
   }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

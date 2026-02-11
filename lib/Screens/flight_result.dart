@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/Model/flight_model.dart';
-import 'package:flutter_application_1/Screens/flight_details.dart';
 
+import 'package:flutter_application_1/Screens/flight_details.dart';
+import 'package:flutter_application_1/data/models/flight_model.dart';
+import 'package:provider/provider.dart';
+import '../providers/flight_provider.dart';
 
 class FlightResultScreen extends StatefulWidget {
   final String fromCity;
@@ -22,82 +24,27 @@ class FlightResultScreen extends StatefulWidget {
 }
 
 class _FlightResultScreenState extends State<FlightResultScreen> {
-  int activeFilter = 0;
   int? selectedIndex;
 
-  late final List<FlightModel> flights = const [
-    FlightModel(
-      airlineName: "Citilink Airline",
-      flightId: "ID3242113",
-      logoText: "Citilink",
-      logoBg: Color(0xFFE7F7EE),
-      logoTextColor: Color(0xFF0D8B57),
-      departTime: "07:47",
-      arriveTime: "14:30",
-      departCode: "CGK",
-      departCity: "(Jakarta)",
-      arriveCode: "NRT",
-      arriveCity: "(Tokyo)",
-      duration: "7h 15m",
-      price: 321,
-      terminal: "2A",
-      gate: "19",
-      flightClass: "Economy",
-    ),
-    FlightModel(
-      airlineName: "Catty Airline",
-      flightId: "ID7845210",
-      logoText: "CattyAir",
-      logoBg: Color(0xFFFFE8E8),
-      logoTextColor: Color(0xFFCC2E2E),
-      departTime: "07:47",
-      arriveTime: "14:30",
-      departCode: "CGK",
-      departCity: "(Jakarta)",
-      arriveCode: "NRT",
-      arriveCity: "(Tokyo)",
-      duration: "7h 20m",
-      price: 321,
-      terminal: "1B",
-      gate: "06",
-      flightClass: "Economy",
-    ),
-    FlightModel(
-      airlineName: "Bird Indonesia Airline",
-      flightId: "ID1129008",
-      logoText: "Bird",
-      logoBg: Color(0xFFEAF1FF),
-      logoTextColor: Color(0xFF2B67FF),
-      departTime: "07:47",
-      arriveTime: "14:30",
-      departCode: "CGK",
-      departCity: "(Jakarta)",
-      arriveCode: "NRT",
-      arriveCity: "(Tokyo)",
-      duration: "7h 20m",
-      price: 321,
-      terminal: "3A",
-      gate: "12",
-      flightClass: "Economy",
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
 
-  List<FlightModel> get filteredFlights {
-    final list = [...flights];
-
-    if (activeFilter == 0) {
-      list.sort((a, b) => a.price.compareTo(b.price));
-    } else if (activeFilter == 1) {
-      return list.where((e) => e.logoText != "CattyAir").toList();
-    }
-
-    return list;
+    // API HIT
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<FlightProvider>().searchFlights(
+            fromCity: widget.fromCity,
+            toCity: widget.toCity,
+            date: widget.date,
+            people: widget.people,
+          );
+    });
   }
 
-  void _selectFlight(int index) {
+  void _selectFlight(int index, List<FlightModel> list) {
     setState(() => selectedIndex = index);
 
-    final flight = filteredFlights[index];
+    final flight = list[index];
 
     Navigator.push(
       context,
@@ -109,7 +56,8 @@ class _FlightResultScreenState extends State<FlightResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final list = filteredFlights;
+    final provider = context.watch<FlightProvider>();
+    final list = provider.filteredFlights;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -132,6 +80,7 @@ class _FlightResultScreenState extends State<FlightResultScreen> {
               ),
             ),
 
+            // BODY
             SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Padding(
@@ -146,17 +95,56 @@ class _FlightResultScreenState extends State<FlightResultScreen> {
                     const SizedBox(height: 14),
 
                     _FilterRow(
-                      activeIndex: activeFilter,
-                      onTap: (i) => setState(() => activeFilter = i),
+                      activeIndex: provider.activeFilter,
+                      onTap: (i) => provider.setActiveFilter(i),
                     ),
                     const SizedBox(height: 14),
 
-                    for (int i = 0; i < list.length; i++) ...[
-                      _FlightCard(
-                        flight: list[i],
-                        onSelect: () => _selectFlight(i),
+                    // LOADING
+                    if (provider.isLoading) ...[
+                      const SizedBox(height: 60),
+                      const Center(child: CircularProgressIndicator()),
+                    ]
+
+                    // ERROR
+                    else if (provider.error != null) ...[
+                      const SizedBox(height: 60),
+                      Center(
+                        child: Text(
+                          provider.error!,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
-                      if (i != list.length - 1) const SizedBox(height: 14),
+                    ]
+
+                    // EMPTY
+                    else if (list.isEmpty) ...[
+                      const SizedBox(height: 60),
+                      const Center(
+                        child: Text(
+                          "No flights found",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ]
+
+                    // LIST
+                    else ...[
+                      for (int i = 0; i < list.length; i++) ...[
+                        _FlightCard(
+                          flight: list[i],
+                          onSelect: () => _selectFlight(i, list),
+                        ),
+                        if (i != list.length - 1) const SizedBox(height: 14),
+                      ],
                     ],
                   ],
                 ),
@@ -201,7 +189,7 @@ class _FlightResultScreenState extends State<FlightResultScreen> {
   }
 }
 
-// ===================== UI WIDGETS =====================
+// ===================== UI WIDGETS (UNCHANGED) =====================
 
 class _TopBar extends StatelessWidget {
   final VoidCallback onBack;
@@ -544,7 +532,8 @@ class _AirportSide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         Text(
           time,

@@ -1,22 +1,38 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/Screens/trip_home_screen.dart';
+import 'package:provider/provider.dart';
+
+import 'core/di/injector.dart';
+import 'providers/flight_provider.dart';
+import 'providers/flight_details_provider.dart';
+import 'providers/airport_provider.dart';
+import 'screens/trip_home_screen.dart';
+
 void main() {
-  runApp(const TripUIApp());
+  runApp(const MyApp());
 }
 
-class TripUIApp extends StatelessWidget {
-  const TripUIApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Trip UI',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'SF Pro Display', // optional (iOS vibe)
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => FlightProvider(Injector.flightRepository),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => FlightDetailsProvider(Injector.flightRepository),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AirportProvider(Injector.airportRepository),
+        ),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: "Flight Booking",
+        home: const TripHomeScreen(),
       ),
-      home: const TripHomeScreen(),
     );
   }
 }
