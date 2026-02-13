@@ -19,7 +19,7 @@ class ApiClient {
           ),
         ) {
     // Optional: Logs for debugging (remove in production)
-    // _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
+    _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
   }
 
   Future<Map<String, dynamic>> post(

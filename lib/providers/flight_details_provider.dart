@@ -14,8 +14,11 @@ class FlightDetailsProvider extends ChangeNotifier {
   FlightModel? flightDetails;
 
   Future<void> loadDetails(FlightModel flight) async {
+  
+
     // If API id not available, just show passed flight
     if (flight.apiId == null) {
+      print("❌ apiId is NULL, so API call will NOT happen.");
       flightDetails = flight;
       notifyListeners();
       return;
@@ -27,16 +30,25 @@ class FlightDetailsProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+    
+
       flightDetails = await _repo.getFlightDetails(flight.apiId!);
+
     } on ApiException catch (e) {
+ 
+
       error = e.message;
       flightDetails = flight; // fallback
-    } catch (_) {
+    } catch (e, st) {
+ 
+
       error = "Something went wrong";
       flightDetails = flight; // fallback
     }
 
     isLoading = false;
     notifyListeners();
+
+   
   }
 }

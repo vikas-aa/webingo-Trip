@@ -32,24 +32,27 @@ class FlightRepository {
     return flightsRaw.map((e) => FlightModel.fromApi(e)).toList();
   }
 
-  Future<FlightModel> getFlightDetails(int id) async {
-    final res = await _api.getFlightDetails(id: id);
+Future<FlightModel> getFlightDetails(int id) async {
+  final res = await _api.getFlightDetails(id: id);
 
-    // most likely:
-    // { status: success, data: { ...flight... } }
+  final dynamic data = res["data"];
 
-    final dynamic data = res["data"];
+  if (data is Map) {
+    // ✅ Correct: flight object is inside flight_details
+    final dynamic flightJson = data["flight_details"];
 
-    if (data is Map<String, dynamic>) {
-      return FlightModel.fromApi(data);
+    if (flightJson is Map<String, dynamic>) {
+      return FlightModel.fromApi(flightJson);
     }
 
-    if (data is Map) {
+    if (flightJson is Map) {
       return FlightModel.fromApi(
-        data.map((k, v) => MapEntry(k.toString(), v)),
+        flightJson.map((k, v) => MapEntry(k.toString(), v)),
       );
     }
-
-    throw Exception("Invalid flight detail response");
   }
+
+  throw Exception("Invalid flight detail response");
+}
+
 }
